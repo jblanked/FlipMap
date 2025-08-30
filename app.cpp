@@ -1,6 +1,6 @@
 #include "app.hpp"
 
-HelloWorldApp::HelloWorldApp()
+FlipMapApp::FlipMapApp()
 {
     gui = static_cast<Gui *>(furi_record_open(RECORD_GUI));
 
@@ -12,16 +12,16 @@ HelloWorldApp::HelloWorldApp()
     }
 
     // Submenu
-    if (!easy_flipper_set_submenu(&submenu, HelloWorldViewSubmenu,
+    if (!easy_flipper_set_submenu(&submenu, FlipMapViewSubmenu,
                                   VERSION_TAG, callbackExitApp, &viewDispatcher))
     {
         FURI_LOG_E(TAG, "Failed to allocate submenu");
         return;
     }
 
-    submenu_add_item(submenu, "Run", HelloWorldSubmenuRun, submenuChoicesCallback, this);
-    submenu_add_item(submenu, "About", HelloWorldSubmenuAbout, submenuChoicesCallback, this);
-    submenu_add_item(submenu, "Settings", HelloWorldSubmenuSettings, submenuChoicesCallback, this);
+    submenu_add_item(submenu, "Run", FlipMapSubmenuRun, submenuChoicesCallback, this);
+    submenu_add_item(submenu, "About", FlipMapSubmenuAbout, submenuChoicesCallback, this);
+    submenu_add_item(submenu, "Settings", FlipMapSubmenuSettings, submenuChoicesCallback, this);
 
     flipperHttp = flipper_http_alloc();
     if (!flipperHttp)
@@ -33,10 +33,10 @@ HelloWorldApp::HelloWorldApp()
     createAppDataPath();
 
     // Switch to the submenu view
-    view_dispatcher_switch_to_view(viewDispatcher, HelloWorldViewSubmenu);
+    view_dispatcher_switch_to_view(viewDispatcher, FlipMapViewSubmenu);
 }
 
-HelloWorldApp::~HelloWorldApp()
+FlipMapApp::~FlipMapApp()
 {
     // Stop and free timer first
     if (timer)
@@ -75,7 +75,7 @@ HelloWorldApp::~HelloWorldApp()
     // Free submenu
     if (submenu)
     {
-        view_dispatcher_remove_view(viewDispatcher, HelloWorldViewSubmenu);
+        view_dispatcher_remove_view(viewDispatcher, FlipMapViewSubmenu);
         submenu_free(submenu);
     }
 
@@ -98,20 +98,41 @@ HelloWorldApp::~HelloWorldApp()
     }
 }
 
-uint32_t HelloWorldApp::callbackExitApp(void *context)
+uint32_t FlipMapApp::callbackExitApp(void *context)
 {
     UNUSED(context);
     return VIEW_NONE;
 }
 
-void HelloWorldApp::callbackSubmenuChoices(uint32_t index)
+void FlipMapApp::callbackSubmenuChoices(uint32_t index)
 {
     switch (index)
     {
-    case HelloWorldSubmenuRun:
+    case FlipMapSubmenuRun:
+        // if the board is not connected, we can't use WiFi
+        if (!isBoardConnected())
+        {
+            easy_flipper_dialog("FlipperHTTP Error", "Ensure your WiFi Developer\nBoard or Pico W is connected\nand the latest FlipperHTTP\nfirmware is installed.");
+            return;
+        }
+        // if we don't have WiFi credentials, we can't connect to WiFi in case
+        // we are not connected to WiFi yet
+        if (!hasWiFiCredentials())
+        {
+            easy_flipper_dialog("No WiFi Credentials", "Please set your WiFi SSID\nand Password in Settings.");
+            return;
+        }
+
+        // if we don't have user credentials, we can't connect to the user account
+        if (!hasUserCredentials())
+        {
+            easy_flipper_dialog("No User Credentials", "Please set your Username\nand Password in Settings.");
+            return;
+        }
+
         if (!run)
         {
-            run = std::make_unique<HelloWorldRun>(this);
+            run = std::make_unique<FlipMapRun>(this);
         }
 
         // setup view port
@@ -138,26 +159,32 @@ void HelloWorldApp::callbackSubmenuChoices(uint32_t index)
             furi_timer_start(timer, 100); // Update every 100ms
         }
         break;
-    case HelloWorldSubmenuAbout:
+    case FlipMapSubmenuAbout:
         if (!about)
         {
-            about = std::make_unique<HelloWorldAbout>(&viewDispatcher);
+            about = std::make_unique<FlipMapAbout>(&viewDispatcher);
         }
-        view_dispatcher_switch_to_view(viewDispatcher, HelloWorldViewAbout);
+        view_dispatcher_switch_to_view(viewDispatcher, FlipMapViewAbout);
         break;
-    case HelloWorldSubmenuSettings:
+    case FlipMapSubmenuSettings:
+        // if the board is not connected, we can't use WiFi when getting location
+        if (!isBoardConnected())
+        {
+            easy_flipper_dialog("FlipperHTTP Error", "Ensure your WiFi Developer\nBoard or Pico W is connected\nand the latest FlipperHTTP\nfirmware is installed.");
+            return;
+        }
         if (!settings)
         {
-            settings = std::make_unique<HelloWorldSettings>(&viewDispatcher, this);
+            settings = std::make_unique<FlipMapSettings>(&viewDispatcher, this);
         }
-        view_dispatcher_switch_to_view(viewDispatcher, HelloWorldViewSettings);
+        view_dispatcher_switch_to_view(viewDispatcher, FlipMapViewSettings);
         break;
     default:
         break;
     }
 }
 
-void HelloWorldApp::createAppDataPath()
+void FlipMapApp::createAppDataPath()
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     char directory_path[256];
@@ -168,7 +195,27 @@ void HelloWorldApp::createAppDataPath()
     furi_record_close(RECORD_STORAGE);
 }
 
-FuriString *HelloWorldApp::httpRequest(
+bool FlipMapApp::hasWiFiCredentials()
+{
+    char ssid[64] = {0};
+    char password[64] = {0};
+    return loadChar("wifi_ssid", ssid, sizeof(ssid)) &&
+           loadChar("wifi_pass", password, sizeof(password)) &&
+           strlen(ssid) > 0 &&
+           strlen(password) > 0;
+}
+
+bool FlipMapApp::hasUserCredentials()
+{
+    char username[64] = {0};
+    char password[64] = {0};
+    return loadChar("user_name", username, sizeof(username)) &&
+           loadChar("user_pass", password, sizeof(password)) &&
+           strlen(username) > 0 &&
+           strlen(password) > 0;
+}
+
+FuriString *FlipMapApp::httpRequest(
     const char *url,
     HTTPMethod method,
     const char *headers,
@@ -176,7 +223,7 @@ FuriString *HelloWorldApp::httpRequest(
 {
     if (!flipperHttp)
     {
-        FURI_LOG_E(TAG, "HelloWorldApp::httpRequest: FlipperHTTP is NULL");
+        FURI_LOG_E(TAG, "FlipMapApp::httpRequest: FlipperHTTP is NULL");
         return NULL;
     }
     snprintf(flipperHttp->file_path, sizeof(flipperHttp->file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/temp.json", APP_ID);
@@ -184,7 +231,7 @@ FuriString *HelloWorldApp::httpRequest(
     flipperHttp->state = IDLE;
     if (!flipper_http_request(flipperHttp, method, url, headers, payload))
     {
-        FURI_LOG_E(TAG, "HelloWorldApp::httpRequest: Failed to send HTTP request");
+        FURI_LOG_E(TAG, "FlipMapApp::httpRequest: Failed to send HTTP request");
         return NULL;
     }
     flipperHttp->state = RECEIVING;
@@ -195,7 +242,7 @@ FuriString *HelloWorldApp::httpRequest(
     return flipper_http_load_from_file(flipperHttp->file_path);
 }
 
-bool HelloWorldApp::httpRequestAsync(
+bool FlipMapApp::httpRequestAsync(
     const char *saveLocation,
     const char *url,
     HTTPMethod method,
@@ -204,7 +251,7 @@ bool HelloWorldApp::httpRequestAsync(
 {
     if (!flipperHttp)
     {
-        FURI_LOG_E(TAG, "HelloWorldApp::httpRequestAsync: FlipperHTTP is NULL");
+        FURI_LOG_E(TAG, "FlipMapApp::httpRequestAsync: FlipperHTTP is NULL");
         return false;
     }
     snprintf(flipperHttp->file_path, sizeof(flipperHttp->file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s", APP_ID, saveLocation);
@@ -212,14 +259,14 @@ bool HelloWorldApp::httpRequestAsync(
     flipperHttp->state = IDLE;
     if (!flipper_http_request(flipperHttp, method, url, headers, payload))
     {
-        FURI_LOG_E(TAG, "HelloWorldApp::httpRequestAsync: Failed to send HTTP request");
+        FURI_LOG_E(TAG, "FlipMapApp::httpRequestAsync: Failed to send HTTP request");
         return false;
     }
     flipperHttp->state = RECEIVING;
     return true;
 }
 
-bool HelloWorldApp::isBoardConnected()
+bool FlipMapApp::isBoardConnected()
 {
     if (!flipperHttp)
     {
@@ -246,7 +293,7 @@ bool HelloWorldApp::isBoardConnected()
     return flipperHttp->last_response && strcmp(flipperHttp->last_response, "[PONG]") == 0;
 }
 
-bool HelloWorldApp::loadChar(const char *path_name, char *value, size_t value_size)
+bool FlipMapApp::loadChar(const char *path_name, char *value, size_t value_size)
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     File *file = storage_file_alloc(storage);
@@ -278,7 +325,7 @@ bool HelloWorldApp::loadChar(const char *path_name, char *value, size_t value_si
     return strlen(value) > 0;
 }
 
-bool HelloWorldApp::loadFileChunk(const char *filePath, char *buffer, size_t sizeOfChunk, uint8_t iteration)
+bool FlipMapApp::loadFileChunk(const char *filePath, char *buffer, size_t sizeOfChunk, uint8_t iteration)
 {
     if (!filePath || !buffer || sizeOfChunk == 0)
     {
@@ -358,12 +405,12 @@ bool HelloWorldApp::loadFileChunk(const char *filePath, char *buffer, size_t siz
     return read_count > 0;
 }
 
-void HelloWorldApp::runDispatcher()
+void FlipMapApp::runDispatcher()
 {
     view_dispatcher_run(viewDispatcher);
 }
 
-bool HelloWorldApp::saveChar(const char *path_name, const char *value)
+bool FlipMapApp::saveChar(const char *path_name, const char *value)
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     File *file = storage_file_alloc(storage);
@@ -378,7 +425,7 @@ bool HelloWorldApp::saveChar(const char *path_name, const char *value)
     return true;
 }
 
-bool HelloWorldApp::sendWiFiCredentials(const char *ssid, const char *password)
+bool FlipMapApp::sendWiFiCredentials(const char *ssid, const char *password)
 {
     if (!flipperHttp)
     {
@@ -393,7 +440,7 @@ bool HelloWorldApp::sendWiFiCredentials(const char *ssid, const char *password)
     return flipper_http_save_wifi(flipperHttp, ssid, password);
 }
 
-bool HelloWorldApp::setHttpState(HTTPState state) noexcept
+bool FlipMapApp::setHttpState(HTTPState state) noexcept
 {
     if (flipperHttp)
     {
@@ -403,7 +450,7 @@ bool HelloWorldApp::setHttpState(HTTPState state) noexcept
     return false;
 }
 
-void HelloWorldApp::settingsItemSelected(uint32_t index)
+void FlipMapApp::settingsItemSelected(uint32_t index)
 {
     if (settings)
     {
@@ -411,15 +458,15 @@ void HelloWorldApp::settingsItemSelected(uint32_t index)
     }
 }
 
-void HelloWorldApp::submenuChoicesCallback(void *context, uint32_t index)
+void FlipMapApp::submenuChoicesCallback(void *context, uint32_t index)
 {
-    HelloWorldApp *app = (HelloWorldApp *)context;
+    FlipMapApp *app = (FlipMapApp *)context;
     app->callbackSubmenuChoices(index);
 }
 
-void HelloWorldApp::timerCallback(void *context)
+void FlipMapApp::timerCallback(void *context)
 {
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(context);
+    FlipMapApp *app = static_cast<FlipMapApp *>(context);
     furi_check(app);
     auto run = app->run.get();
     if (run)
@@ -448,15 +495,15 @@ void HelloWorldApp::timerCallback(void *context)
                 app->viewPort = nullptr;
             }
 
-            view_dispatcher_switch_to_view(app->viewDispatcher, HelloWorldViewSubmenu);
+            view_dispatcher_switch_to_view(app->viewDispatcher, FlipMapViewSubmenu);
             app->run.reset();
         }
     }
 }
 
-void HelloWorldApp::viewPortDraw(Canvas *canvas, void *context)
+void FlipMapApp::viewPortDraw(Canvas *canvas, void *context)
 {
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(context);
+    FlipMapApp *app = static_cast<FlipMapApp *>(context);
     furi_check(app);
     auto run = app->run.get();
     if (run && run->isActive())
@@ -465,9 +512,9 @@ void HelloWorldApp::viewPortDraw(Canvas *canvas, void *context)
     }
 }
 
-void HelloWorldApp::viewPortInput(InputEvent *event, void *context)
+void FlipMapApp::viewPortInput(InputEvent *event, void *context)
 {
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(context);
+    FlipMapApp *app = static_cast<FlipMapApp *>(context);
     furi_check(app);
     auto run = app->run.get();
     if (run && run->isActive())
@@ -478,13 +525,13 @@ void HelloWorldApp::viewPortInput(InputEvent *event, void *context)
 
 extern "C"
 {
-    int32_t hello_world_main(void *p)
+    int32_t flip_map_main(void *p)
     {
         // Suppress unused parameter warning
         UNUSED(p);
 
         // Create the app
-        HelloWorldApp app;
+        FlipMapApp app;
 
         // Run the app
         app.runDispatcher();

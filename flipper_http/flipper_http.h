@@ -20,7 +20,7 @@ extern "C"
 #endif
 
 #define HTTP_TAG "FlipperHTTP"            // change this to your app name
-#define http_tag "hello_world"            // change this to your app id
+#define http_tag "flip_map"               // change this to your app id
 #define UART_CH (FuriHalSerialIdUsart)    // UART channel
 #define TIMEOUT_DURATION_TICKS (5 * 1000) // 5 seconds
 #define BAUDRATE (115200)                 // UART baudrate

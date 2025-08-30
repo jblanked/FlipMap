@@ -1,9 +1,9 @@
 #include "settings.hpp"
 #include "app.hpp"
 
-HelloWorldSettings::HelloWorldSettings(ViewDispatcher **view_dispatcher, void *appContext) : appContext(appContext), view_dispatcher_ref(view_dispatcher)
+FlipMapSettings::FlipMapSettings(ViewDispatcher **view_dispatcher, void *appContext) : appContext(appContext), view_dispatcher_ref(view_dispatcher)
 {
-    if (!easy_flipper_set_variable_item_list(&variable_item_list, HelloWorldViewSettings,
+    if (!easy_flipper_set_variable_item_list(&variable_item_list, FlipMapViewSettings,
                                              settingsItemSelectedCallback, callbackToSubmenu, view_dispatcher, this))
     {
         return;
@@ -11,11 +11,14 @@ HelloWorldSettings::HelloWorldSettings(ViewDispatcher **view_dispatcher, void *a
 
     variable_item_wifi_ssid = variable_item_list_add(variable_item_list, "WiFi SSID", 1, nullptr, nullptr);
     variable_item_wifi_pass = variable_item_list_add(variable_item_list, "WiFi Password", 1, nullptr, nullptr);
-    variable_item_connect = variable_item_list_add(variable_item_list, "Connect", 1, nullptr, nullptr);
+    variable_item_connect = variable_item_list_add(variable_item_list, "[Connect To WiFi]", 1, nullptr, nullptr);
+    variable_item_user_name = variable_item_list_add(variable_item_list, "User Name", 1, nullptr, nullptr);
+    variable_item_user_pass = variable_item_list_add(variable_item_list, "User Password", 1, nullptr, nullptr);
+    variable_item_location = variable_item_list_add(variable_item_list, "Location", 2, callbackLocation, nullptr);
 
     char loaded_ssid[64];
     char loaded_pass[64];
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(appContext);
+    FlipMapApp *app = static_cast<FlipMapApp *>(appContext);
     if (app->loadChar("wifi_ssid", loaded_ssid, sizeof(loaded_ssid)))
     {
         variable_item_set_current_value_text(variable_item_wifi_ssid, loaded_ssid);
@@ -33,16 +36,45 @@ HelloWorldSettings::HelloWorldSettings(ViewDispatcher **view_dispatcher, void *a
         variable_item_set_current_value_text(variable_item_wifi_pass, "");
     }
     variable_item_set_current_value_text(variable_item_connect, "");
+    if (app->loadChar("user_name", loaded_ssid, sizeof(loaded_ssid)))
+    {
+        variable_item_set_current_value_text(variable_item_user_name, loaded_ssid);
+    }
+    else
+    {
+        variable_item_set_current_value_text(variable_item_user_name, "");
+    }
+    if (app->loadChar("user_pass", loaded_pass, sizeof(loaded_pass)))
+    {
+        variable_item_set_current_value_text(variable_item_user_pass, "*****");
+    }
+    else
+    {
+        variable_item_set_current_value_text(variable_item_user_pass, "");
+    }
+
+    char locationStatus[16];
+    if (app->loadChar("location_status", locationStatus, sizeof(locationStatus)))
+    {
+        const int index = strcmp(locationStatus, "Enabled") == 0 ? 1 : 0;
+        variable_item_set_current_value_index(variable_item_location, index);
+        variable_item_set_current_value_text(variable_item_location, locationStatus);
+    }
+    else
+    {
+        variable_item_set_current_value_index(variable_item_location, 0);
+        variable_item_set_current_value_text(variable_item_location, "Disabled");
+    }
 }
 
-HelloWorldSettings::~HelloWorldSettings()
+FlipMapSettings::~FlipMapSettings()
 {
     // Free text input first
     freeTextInput();
 
     if (variable_item_list && view_dispatcher_ref && *view_dispatcher_ref)
     {
-        view_dispatcher_remove_view(*view_dispatcher_ref, HelloWorldViewSettings);
+        view_dispatcher_remove_view(*view_dispatcher_ref, FlipMapViewSettings);
         variable_item_list_free(variable_item_list);
         variable_item_list = nullptr;
         variable_item_wifi_ssid = nullptr;
@@ -50,23 +82,57 @@ HelloWorldSettings::~HelloWorldSettings()
     }
 }
 
-uint32_t HelloWorldSettings::callbackToSettings(void *context)
+uint32_t FlipMapSettings::callbackToSettings(void *context)
 {
     UNUSED(context);
-    return HelloWorldViewSettings;
+    return FlipMapViewSettings;
 }
 
-uint32_t HelloWorldSettings::callbackToSubmenu(void *context)
+uint32_t FlipMapSettings::callbackToSubmenu(void *context)
 {
-    UNUSED(context);
-    return HelloWorldViewSubmenu;
+    FlipMapApp *app = static_cast<FlipMapApp *>(context);
+    furi_check(app);
+
+    char locationStatus[16];
+    if (app->loadChar("location_status", locationStatus, sizeof(locationStatus)))
+    {
+        const int index = strcmp(locationStatus, "Enabled") == 0 ? 1 : 0;
+
+        // show warning message if enabled
+        if (index == 1)
+        {
+            easy_flipper_dialog("Warning", "User location is enabled.\n\nOther users may see your\ngeneral location ONLY. Exact\nlocation is NEVER shared!");
+        }
+    }
+    return FlipMapViewSubmenu;
 }
 
-void HelloWorldSettings::freeTextInput()
+void FlipMapSettings::callbackLocation(VariableItem *item)
+{
+
+    uint8_t index = variable_item_get_current_value_index(item);
+    const char *locationOptions[] = {"Disabled", "Enabled"};
+    variable_item_set_current_value_text(item, locationOptions[index]);
+    variable_item_set_current_value_index(item, index);
+    // manual save here since appContext is not available in static methods
+    // which still doesnt make sense to me but probably because it expects a C function
+    Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
+    File *file = storage_file_alloc(storage);
+    char file_path[256];
+    snprintf(file_path, sizeof(file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s.txt", APP_ID, "location_status");
+    storage_file_open(file, file_path, FSAM_WRITE, FSOM_CREATE_ALWAYS);
+    size_t data_size = strlen(locationOptions[index]) + 1; // Include null terminator
+    storage_file_write(file, locationOptions[index], data_size);
+    storage_file_close(file);
+    storage_file_free(file);
+    furi_record_close(RECORD_STORAGE);
+}
+
+void FlipMapSettings::freeTextInput()
 {
     if (text_input && view_dispatcher_ref && *view_dispatcher_ref)
     {
-        view_dispatcher_remove_view(*view_dispatcher_ref, HelloWorldViewTextInput);
+        view_dispatcher_remove_view(*view_dispatcher_ref, FlipMapViewTextInput);
 #ifndef FW_ORIGIN_Momentum
         uart_text_input_free(text_input);
 #else
@@ -78,7 +144,7 @@ void HelloWorldSettings::freeTextInput()
     text_input_temp_buffer.reset();
 }
 
-bool HelloWorldSettings::initTextInput(uint32_t view)
+bool FlipMapSettings::initTextInput(uint32_t view)
 {
     // check if already initialized
     if (text_input_buffer || text_input_temp_buffer)
@@ -99,7 +165,7 @@ bool HelloWorldSettings::initTextInput(uint32_t view)
     }
 
     // app context
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(appContext);
+    FlipMapApp *app = static_cast<FlipMapApp *>(appContext);
     char loaded[256];
 
     if (view == SettingsViewSSID)
@@ -114,11 +180,11 @@ bool HelloWorldSettings::initTextInput(uint32_t view)
         }
         text_input_temp_buffer[text_input_buffer_size - 1] = '\0'; // Ensure null-termination
 #ifndef FW_ORIGIN_Momentum
-        return easy_flipper_set_uart_text_input(&text_input, HelloWorldViewTextInput,
+        return easy_flipper_set_uart_text_input(&text_input, FlipMapViewTextInput,
                                                 "Enter SSID", text_input_temp_buffer.get(), text_input_buffer_size,
                                                 textUpdatedSsidCallback, callbackToSettings, view_dispatcher_ref, this);
 #else
-        return easy_flipper_set_text_input(&text_input, HelloWorldViewTextInput,
+        return easy_flipper_set_text_input(&text_input, FlipMapViewTextInput,
                                            "Enter SSID", text_input_temp_buffer.get(), text_input_buffer_size,
                                            textUpdatedSsidCallback, callbackToSettings, view_dispatcher_ref, this);
 #endif
@@ -135,29 +201,73 @@ bool HelloWorldSettings::initTextInput(uint32_t view)
         }
         text_input_temp_buffer[text_input_buffer_size - 1] = '\0'; // Ensure null-termination
 #ifndef FW_ORIGIN_Momentum
-        return easy_flipper_set_uart_text_input(&text_input, HelloWorldViewTextInput,
+        return easy_flipper_set_uart_text_input(&text_input, FlipMapViewTextInput,
                                                 "Enter Password", text_input_temp_buffer.get(), text_input_buffer_size,
                                                 textUpdatedPassCallback, callbackToSettings, view_dispatcher_ref, this);
 #else
-        return easy_flipper_set_text_input(&text_input, HelloWorldViewTextInput,
+        return easy_flipper_set_text_input(&text_input, FlipMapViewTextInput,
                                            "Enter Password", text_input_temp_buffer.get(), text_input_buffer_size,
                                            textUpdatedPassCallback, callbackToSettings, view_dispatcher_ref, this);
+#endif
+    }
+    else if (view == SettingsViewUserName)
+    {
+        if (app->loadChar("user_name", loaded, sizeof(loaded)))
+        {
+            strncpy(text_input_temp_buffer.get(), loaded, text_input_buffer_size);
+        }
+        else
+        {
+            text_input_temp_buffer[0] = '\0'; // Ensure empty if not loaded
+        }
+        text_input_temp_buffer[text_input_buffer_size - 1] = '\0'; // Ensure null-termination
+#ifndef FW_ORIGIN_Momentum
+        return easy_flipper_set_uart_text_input(&text_input, FlipMapViewTextInput,
+                                                "Enter User Name", text_input_temp_buffer.get(), text_input_buffer_size,
+                                                textUpdatedUserNameCallback, callbackToSettings, view_dispatcher_ref, this);
+#else
+        return easy_flipper_set_text_input(&text_input, FlipMapViewTextInput,
+                                           "Enter User Name", text_input_temp_buffer.get(), text_input_buffer_size,
+                                           textUpdatedUserNameCallback, callbackToSettings, view_dispatcher_ref, this);
+#endif
+    }
+    else if (view == SettingsViewUserPass)
+    {
+        if (app->loadChar("user_pass", loaded, sizeof(loaded)))
+        {
+            strncpy(text_input_temp_buffer.get(), loaded, text_input_buffer_size);
+        }
+        else
+        {
+            text_input_temp_buffer[0] = '\0'; // Ensure empty if not loaded
+        }
+        text_input_temp_buffer[text_input_buffer_size - 1] = '\0'; // Ensure null-termination
+#ifndef FW_ORIGIN_Momentum
+        return easy_flipper_set_uart_text_input(&text_input, FlipMapViewTextInput,
+                                                "Enter User Password", text_input_temp_buffer.get(), text_input_buffer_size,
+                                                textUpdatedUserPassCallback, callbackToSettings, view_dispatcher_ref, this);
+#else
+        return easy_flipper_set_text_input(&text_input, FlipMapViewTextInput,
+                                           "Enter User Password", text_input_temp_buffer.get(), text_input_buffer_size,
+                                           textUpdatedUserPassCallback, callbackToSettings, view_dispatcher_ref, this);
 #endif
     }
     return false;
 }
 
-void HelloWorldSettings::settingsItemSelected(uint32_t index)
+void FlipMapSettings::settingsItemSelected(uint32_t index)
 {
     switch (index)
     {
     case SettingsViewSSID:
     case SettingsViewPassword:
+    case SettingsViewUserName:
+    case SettingsViewUserPass:
         startTextInput(index);
         break;
     case SettingsViewConnect:
     {
-        HelloWorldApp *app = static_cast<HelloWorldApp *>(appContext);
+        FlipMapApp *app = static_cast<FlipMapApp *>(appContext);
         char loaded_ssid[64];
         char loaded_pass[64];
         if (!app->loadChar("wifi_ssid", loaded_ssid, sizeof(loaded_ssid)) ||
@@ -177,13 +287,13 @@ void HelloWorldSettings::settingsItemSelected(uint32_t index)
     };
 }
 
-void HelloWorldSettings::settingsItemSelectedCallback(void *context, uint32_t index)
+void FlipMapSettings::settingsItemSelectedCallback(void *context, uint32_t index)
 {
-    HelloWorldSettings *settings = (HelloWorldSettings *)context;
+    FlipMapSettings *settings = (FlipMapSettings *)context;
     settings->settingsItemSelected(index);
 }
 
-bool HelloWorldSettings::startTextInput(uint32_t view)
+bool FlipMapSettings::startTextInput(uint32_t view)
 {
     freeTextInput();
     if (!initTextInput(view))
@@ -193,7 +303,7 @@ bool HelloWorldSettings::startTextInput(uint32_t view)
     }
     if (view_dispatcher_ref && *view_dispatcher_ref)
     {
-        view_dispatcher_switch_to_view(*view_dispatcher_ref, HelloWorldViewTextInput);
+        view_dispatcher_switch_to_view(*view_dispatcher_ref, FlipMapViewTextInput);
         return true;
     }
     else
@@ -203,7 +313,7 @@ bool HelloWorldSettings::startTextInput(uint32_t view)
     }
 }
 
-void HelloWorldSettings::textUpdated(uint32_t view)
+void FlipMapSettings::textUpdated(uint32_t view)
 {
     // store the entered text
     strncpy(text_input_buffer.get(), text_input_temp_buffer.get(), text_input_buffer_size);
@@ -212,7 +322,7 @@ void HelloWorldSettings::textUpdated(uint32_t view)
     text_input_buffer[text_input_buffer_size - 1] = '\0';
 
     // app context
-    HelloWorldApp *app = static_cast<HelloWorldApp *>(appContext);
+    FlipMapApp *app = static_cast<FlipMapApp *>(appContext);
 
     switch (view)
     {
@@ -230,6 +340,20 @@ void HelloWorldSettings::textUpdated(uint32_t view)
         }
         app->saveChar("wifi_pass", text_input_buffer.get());
         break;
+    case SettingsViewUserName:
+        if (variable_item_user_name)
+        {
+            variable_item_set_current_value_text(variable_item_user_name, text_input_buffer.get());
+        }
+        app->saveChar("user_name", text_input_buffer.get());
+        break;
+    case SettingsViewUserPass:
+        if (variable_item_user_pass)
+        {
+            variable_item_set_current_value_text(variable_item_user_pass, text_input_buffer.get());
+        }
+        app->saveChar("user_pass", text_input_buffer.get());
+        break;
     default:
         break;
     }
@@ -237,18 +361,30 @@ void HelloWorldSettings::textUpdated(uint32_t view)
     // switch to the settings view
     if (view_dispatcher_ref && *view_dispatcher_ref)
     {
-        view_dispatcher_switch_to_view(*view_dispatcher_ref, HelloWorldViewSettings);
+        view_dispatcher_switch_to_view(*view_dispatcher_ref, FlipMapViewSettings);
     }
 }
 
-void HelloWorldSettings::textUpdatedSsidCallback(void *context)
+void FlipMapSettings::textUpdatedSsidCallback(void *context)
 {
-    HelloWorldSettings *settings = (HelloWorldSettings *)context;
+    FlipMapSettings *settings = (FlipMapSettings *)context;
     settings->textUpdated(SettingsViewSSID);
 }
 
-void HelloWorldSettings::textUpdatedPassCallback(void *context)
+void FlipMapSettings::textUpdatedPassCallback(void *context)
 {
-    HelloWorldSettings *settings = (HelloWorldSettings *)context;
+    FlipMapSettings *settings = (FlipMapSettings *)context;
     settings->textUpdated(SettingsViewPassword);
+}
+
+void FlipMapSettings::textUpdatedUserNameCallback(void *context)
+{
+    FlipMapSettings *settings = (FlipMapSettings *)context;
+    settings->textUpdated(SettingsViewUserName);
+}
+
+void FlipMapSettings::textUpdatedUserPassCallback(void *context)
+{
+    FlipMapSettings *settings = (FlipMapSettings *)context;
+    settings->textUpdated(SettingsViewUserPass);
 }
