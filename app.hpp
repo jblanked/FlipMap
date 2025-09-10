@@ -7,7 +7,7 @@
 #include "about/about.hpp"
 
 #define TAG "FlipMap"
-#define VERSION "0.1"
+#define VERSION "0.2"
 #define VERSION_TAG TAG " " VERSION
 #define APP_ID "flip_map"
 

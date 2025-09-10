@@ -667,12 +667,14 @@ void FlipMapRun::updateInput(InputEvent *event)
             if (menuIndex > 0)
             {
                 menuIndex--;
+                shouldDebounce = true;
             }
             break;
         case InputKeyDown:
             if (menuIndex < menuMaxIndex)
             {
                 menuIndex++;
+                shouldDebounce = true;
             }
             break;
         case InputKeyLeft:
@@ -681,6 +683,7 @@ void FlipMapRun::updateInput(InputEvent *event)
                 inCountryView = true;
                 menuIndex = 0;
                 menuStartIndex = 0;
+                shouldDebounce = true;
             }
             break;
         case InputKeyRight:
@@ -689,6 +692,7 @@ void FlipMapRun::updateInput(InputEvent *event)
                 inCountryView = false;
                 menuIndex = 0;
                 menuStartIndex = 0;
+                shouldDebounce = true;
             }
             break;
         case InputKeyOk:
