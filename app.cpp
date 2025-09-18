@@ -30,7 +30,8 @@ FlipMapApp::FlipMapApp()
         return;
     }
 
-    createAppDataPath();
+    createAppDataPath(APP_ID);
+    createAppDataPath("flipper_http");
 
     // Switch to the submenu view
     view_dispatcher_switch_to_view(viewDispatcher, FlipMapViewSubmenu);
@@ -184,13 +185,13 @@ void FlipMapApp::callbackSubmenuChoices(uint32_t index)
     }
 }
 
-void FlipMapApp::createAppDataPath()
+void FlipMapApp::createAppDataPath(const char *appId)
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     char directory_path[256];
-    snprintf(directory_path, sizeof(directory_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s", APP_ID);
+    snprintf(directory_path, sizeof(directory_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s", appId);
     storage_common_mkdir(storage, directory_path);
-    snprintf(directory_path, sizeof(directory_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data", APP_ID);
+    snprintf(directory_path, sizeof(directory_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data", appId);
     storage_common_mkdir(storage, directory_path);
     furi_record_close(RECORD_STORAGE);
 }
@@ -199,8 +200,8 @@ bool FlipMapApp::hasWiFiCredentials()
 {
     char ssid[64] = {0};
     char password[64] = {0};
-    return loadChar("wifi_ssid", ssid, sizeof(ssid)) &&
-           loadChar("wifi_pass", password, sizeof(password)) &&
+    return loadChar("wifi_ssid", ssid, sizeof(ssid), "flipper_http") &&
+           loadChar("wifi_pass", password, sizeof(password), "flipper_http") &&
            strlen(ssid) > 0 &&
            strlen(password) > 0;
 }
@@ -209,8 +210,8 @@ bool FlipMapApp::hasUserCredentials()
 {
     char username[64] = {0};
     char password[64] = {0};
-    return loadChar("user_name", username, sizeof(username)) &&
-           loadChar("user_pass", password, sizeof(password)) &&
+    return loadChar("user_name", username, sizeof(username), "flipper_http") &&
+           loadChar("user_pass", password, sizeof(password), "flipper_http") &&
            strlen(username) > 0 &&
            strlen(password) > 0;
 }
@@ -293,12 +294,12 @@ bool FlipMapApp::isBoardConnected()
     return flipperHttp->last_response && strcmp(flipperHttp->last_response, "[PONG]") == 0;
 }
 
-bool FlipMapApp::loadChar(const char *path_name, char *value, size_t value_size)
+bool FlipMapApp::loadChar(const char *path_name, char *value, size_t value_size, const char *appId)
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     File *file = storage_file_alloc(storage);
     char file_path[256];
-    snprintf(file_path, sizeof(file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s.txt", APP_ID, path_name);
+    snprintf(file_path, sizeof(file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s.txt", appId, path_name);
     if (!storage_file_open(file, file_path, FSAM_READ, FSOM_OPEN_EXISTING))
     {
         storage_file_free(file);
@@ -410,12 +411,12 @@ void FlipMapApp::runDispatcher()
     view_dispatcher_run(viewDispatcher);
 }
 
-bool FlipMapApp::saveChar(const char *path_name, const char *value)
+bool FlipMapApp::saveChar(const char *path_name, const char *value, const char *appId)
 {
     Storage *storage = static_cast<Storage *>(furi_record_open(RECORD_STORAGE));
     File *file = storage_file_alloc(storage);
     char file_path[256];
-    snprintf(file_path, sizeof(file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s.txt", APP_ID, path_name);
+    snprintf(file_path, sizeof(file_path), STORAGE_EXT_PATH_PREFIX "/apps_data/%s/data/%s.txt", appId, path_name);
     storage_file_open(file, file_path, FSAM_WRITE, FSOM_CREATE_ALWAYS);
     size_t data_size = strlen(value) + 1; // Include null terminator
     storage_file_write(file, value, data_size);
@@ -532,6 +533,8 @@ extern "C"
 
         // Create the app
         FlipMapApp app;
+
+        app.saveChar("app_version", VERSION_TAG);
 
         // Run the app
         app.runDispatcher();
